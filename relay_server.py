@@ -46,5 +46,5 @@ def start_relay():
         threading.Thread(target=handle_client, args=(host_input, client_input)).start()
         threading.Thread(target=handle_client, args=(client_input, host_input)).start()
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     start_relay()
