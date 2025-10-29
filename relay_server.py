@@ -3,7 +3,7 @@ from flask import Flask, request
 from flask_socketio import SocketIO, emit
 import os
 
-app = Flask(_name_)
+app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "remote-access")
 socketio = SocketIO(app, cors_allowed_origins="*")
 
