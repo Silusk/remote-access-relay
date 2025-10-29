@@ -1,50 +1,48 @@
-import socket
-import threading
+# relay_server.py
+from flask import Flask, request
+from flask_socketio import SocketIO, emit
+import os
 
-HOST = "0.0.0.0"
-PORT_VIDEO = 8080
-PORT_INPUT = 9090
+app = Flask(_name_)
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "remote-access")
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-def handle_client(client_socket, other_socket):
-    while True:
-        try:
-            data = client_socket.recv(4096)
-            if not data:
-                break
-            other_socket.sendall(data)
-        except:
-            break
-    client_socket.close()
-    other_socket.close()
+clients = {}
 
-def start_relay():
-    video_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    video_server.bind((HOST, PORT_VIDEO))
-    video_server.listen(1)
-    print(f"Relay Video server listening on port {PORT_VIDEO}")
+@app.route("/")
+def home():
+    return "🔗 Relay server running successfully on Render!"
 
-    input_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    input_server.bind((HOST, PORT_INPUT))
-    input_server.listen(1)
-    print(f"Relay Input server listening on port {PORT_INPUT}")
+# When a client connects (either host or viewer)
+@socketio.on("connect")
+def connect():
+    print("Client connected:", request.sid)
 
-    while True:
-        print("Waiting for host (laptop)...")
-        host_video, _ = video_server.accept()
-        print("Host connected for video")
-        host_input, _ = input_server.accept()
-        print("Host connected for input")
+@socketio.on("disconnect")
+def disconnect():
+    print("Client disconnected:", request.sid)
+    # remove from mapping if exists
+    for k, v in list(clients.items()):
+        if v == request.sid:
+            del clients[k]
 
-        print("Waiting for client (phone)...")
-        client_video, _ = video_server.accept()
-        print("Client connected for video")
-        client_input, _ = input_server.accept()
-        print("Client connected for input")
+# Register each device (host or controller)
+@socketio.on("register")
+def register(data):
+    role = data.get("role")
+    pin = data.get("pin")
+    clients[(role, pin)] = request.sid
+    print(f"Registered {role} with PIN {pin}")
 
-        threading.Thread(target=handle_client, args=(host_video, client_video)).start()
-        threading.Thread(target=handle_client, args=(client_video, host_video)).start()
-        threading.Thread(target=handle_client, args=(host_input, client_input)).start()
-        threading.Thread(target=handle_client, args=(client_input, host_input)).start()
+# Relay messages between host and controller
+@socketio.on("relay")
+def relay(data):
+    pin = data.get("pin")
+    target_role = "controller" if data.get("from") == "host" else "host"
+    target_sid = clients.get((target_role, pin))
+    if target_sid:
+        socketio.emit("relay", data, room=target_sid)
 
 if __name__ == "__main__":
-    start_relay()
+    port = int(os.environ.get("PORT", 10000))
+    socketio.run(app, host="0.0.0.0", port=port)
